@@ -7,6 +7,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 class AirbusDataset(Dataset):
+    # TODO: There is a mistake in this because multiple rows in the csv have the same ImageId
+    # because multiple ships can be on a single image
     def __init__(self, segmentations_file, imgs_dir):
         self.img_segmentations: list[Tuple[str, np.ndarray]] = []
         with open(segmentations_file, 'r') as f:
