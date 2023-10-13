@@ -2,22 +2,16 @@ import csv
 from pathlib import Path
 from typing import Tuple
 
+import pandas as pd
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 
 class AirbusDataset(Dataset):
-    # TODO: There is a mistake in this because multiple rows in the csv have the same ImageId
-    # because multiple ships can be on a single image
     def __init__(self, segmentations_file, imgs_dir):
-        self.img_segmentations: list[Tuple[str, np.ndarray]] = []
-        with open(segmentations_file, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                self.img_segmentations.append((
-                    row['ImageId'],
-                    np.array(row['EncodedPixels'].split(), dtype=int).reshape((-1, 2))
-                ))
+        segmentations = pd.read_csv(segmentations_file)
+        segmentations['EncodedPixels'] = segmentations['EncodedPixels'].fillna('')
+        self.img_segmentations = segmentations.groupby(['ImageId']).agg({'EncodedPixels': ' '.join})
 
         self.imgs_dir = Path(imgs_dir)
 
@@ -25,9 +19,22 @@ class AirbusDataset(Dataset):
         return len(self.img_segmentations)
 
     def __getitem__(self, index: int):
-        img_id, segmentation = self.img_segmentations[index]
+        img_id = self.img_segmentations.index[index]
         image = Image.open(self.imgs_dir / img_id)
-        return image, segmentation
+
+        # The run length encoding of an image
+        rle = self.img_segmentations.iloc[index, 0].split()
+
+        # Creating image mask from encoding
+        starts, lengths = [np.asarray(x, dtype=int)
+                           for x in (rle[0:][::2], rle[1:][::2])]
+        starts -= 1
+        ends = starts + lengths
+        mask = np.zeros(image.height*image.width, dtype=np.bool_)
+        for lo, hi in zip(starts, ends):
+            mask[lo:hi] = True
+        mask = mask.reshape((image.height, image.width))
+        return image, mask.transpose()
 
 
 if __name__ == '__main__':
