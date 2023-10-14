@@ -20,7 +20,7 @@ def download_dataset(out_path, small=False):
             # Download file into the created directory
             kaggle.api.competition_download_file(COMPETITION, file, path=fdir)
     else:
-        kaggle.api.competition_download_files(COMPETITION, out_path)
+        kaggle.api.competition_download_cli(COMPETITION, path=out_path)
 
     # Extract all zip files and delete them
     zip_files = list(out_path.glob('*.zip'))
