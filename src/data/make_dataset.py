@@ -19,15 +19,17 @@ def download_dataset(out_path, small=False):
 
             # Download file into the created directory
             kaggle.api.competition_download_file(COMPETITION, file, path=fdir)
+
+        # Extract all zip files and delete them
+        zip_files = list(out_path.glob('*.zip'))
+        for file in zip_files:
+            with zipfile.ZipFile(file) as zip:
+                zip.extractall(out_path)
+            file.unlink()
+        return out_path
     else:
         kaggle.api.competition_download_cli(COMPETITION, path=out_path)
-
-    # Extract all zip files and delete them
-    zip_files = list(out_path.glob('*.zip'))
-    for file in zip_files:
-        with zipfile.ZipFile(file) as zip:
-            zip.extractall(out_path)
-        file.unlink()
+        return out_path / f'{COMPETITION}.zip'
 
 
 def filter_missing(annotations_file, imgs_dir):
