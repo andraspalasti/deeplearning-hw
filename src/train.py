@@ -1,3 +1,5 @@
+import logging
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,7 +11,10 @@ import wandb
 from src.evaluate import evaluate
 
 
-def train(
+dir_checkpoint = Path('./checkpoints/')
+
+
+def train_model(
     model: nn.Module,
     device: torch.device,
     train_loader: DataLoader,
@@ -24,6 +29,15 @@ def train(
         'batch_size': train_loader.batch_size,
         'learning_rate': learning_rate,
     })
+
+    logging.info(f'''Starting training:
+        Epochs:          {epochs}
+        Batch size:      {train_loader.batch_size}
+        Learning rate:   {learning_rate}
+        Training size:   {len(train_loader.dataset)}
+        Validation size: {len(val_loader.dataset)}
+        Device:          {device.type}
+    ''')
 
     # Set up optimizer, the loss
     optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, foreach=True)
@@ -47,7 +61,10 @@ def train(
                 true_masks = true_masks.to(device=device, dtype=torch.float32)
 
                 masks_pred = model(images)
+
+                # TODO: Only works on single class
                 loss = criterion(masks_pred, true_masks)
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -63,16 +80,23 @@ def train(
                 pbar.set_postfix(**{'loss (batch)': loss.item()})
 
                 # Log statistics
-                if (i+1) % (len(train_loader) // 4) == 0:
+                if (i+1) % (len(train_loader) // 5) == 0:
                     val_score = evaluate(model, val_loader, device)
+
                     experiment.log({
                         'learning rate': learning_rate,
                         'validation Dice': val_score,
                         'images': wandb.Image(images[0].permute(1, 2, 0).cpu()),
                         'masks': {
-                            'true': wandb.Image(true_masks[0].cpu()),
-                            'pred': wandb.Image(masks_pred.argmax(dim=1)[0].cpu()),
+                            'true': wandb.Image(true_masks[0].permute(1, 2, 0).cpu()),
+                            'pred': wandb.Image(masks_pred[0].permute(1, 2, 0).cpu()),
                         },
                         'step': global_step,
                         'epoch': epoch,
                     })
+
+        # Save checkpoint
+        Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
+        state_dict = model.state_dict()
+        torch.save(state_dict, str(dir_checkpoint / f'checkpoint_epoch{epoch}.pth'))
+        logging.info(f'Checkpoint {epoch} saved!')
