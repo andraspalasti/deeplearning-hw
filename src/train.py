@@ -3,7 +3,7 @@ from pathlib import Path
 import wandb
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torchvision.transforms.functional import to_pil_image
 from torch import optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -83,13 +83,18 @@ def train_model(
                 if (i+1) % (len(train_loader) // 5) == 0:
                     val_score = evaluate(model, val_loader, device)
                     print(f'Validation Dice score: {val_score}')
+
+                    # Search for an image containing a ship in batch
+                    ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
+                    image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
+
                     experiment.log({
                         'learning rate': learning_rate,
                         'validation Dice': val_score,
-                        'images': wandb.Image(images[0].permute((1, 2, 0)).cpu()),
+                        'images': wandb.Image(to_pil_image(images[image_ix])),
                         'masks': {
-                            'true': wandb.Image(true_masks[0].permute((1, 2, 0)).cpu()),
-                            'pred': wandb.Image(masks_pred[0].permute((1, 2, 0)).cpu()),
+                            'true': wandb.Image(to_pil_image(true_masks[image_ix])),
+                            'pred': wandb.Image(to_pil_image(masks_pred[image_ix])),
                         },
                         'step': global_step,
                         'epoch': epoch,
