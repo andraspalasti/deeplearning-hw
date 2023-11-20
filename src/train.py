@@ -90,8 +90,8 @@ def train_model(
                     image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
 
                     # TODO: Only works for n_classes = 1
-                    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).type(torch.uint8).numpy()
-                    ground_truth = torch.squeeze(true_masks[image_ix]).numpy()
+                    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).cpu().numpy()
+                    ground_truth = torch.squeeze(true_masks[image_ix]).cpu().numpy()
 
                     experiment.log({
                         'learning rate': learning_rate,
