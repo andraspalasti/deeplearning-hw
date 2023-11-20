@@ -13,6 +13,7 @@ from src.evaluate import evaluate
 
 dir_checkpoint = Path('./checkpoints/')
 
+class_labels = {0: 'background', 1: 'ship'}
 
 def train_model(
     model: nn.Module,
@@ -88,14 +89,20 @@ def train_model(
                     ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
                     image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
 
+                    # TODO: Only works for n_classes = 1
+                    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).type(torch.uint8).numpy()
+                    ground_truth = torch.squeeze(true_masks[image_ix]).numpy()
+
                     experiment.log({
                         'learning rate': learning_rate,
                         'validation Dice': val_score,
-                        'images': wandb.Image(to_pil_image(images[image_ix])),
-                        'masks': {
-                            'true': wandb.Image(to_pil_image(true_masks[image_ix])),
-                            'pred': wandb.Image(to_pil_image(masks_pred[image_ix])),
-                        },
+                        'image': wandb.Image(
+                            to_pil_image(images[image_ix]), 
+                            masks={
+                                'prediction': {'mask_data': predicted_mask, 'class_labels': class_labels},
+                                'ground_truth': {'mask_data': ground_truth, 'class_labels': class_labels}
+                            },
+                        ),
                         'step': global_step,
                         'epoch': epoch,
                     })
@@ -105,3 +112,33 @@ def train_model(
         state_dict = model.state_dict()
         torch.save(state_dict, str(dir_checkpoint / f'checkpoint_epoch{epoch}.pth'))
         print(f'Checkpoint {epoch} saved!')
+
+
+if __name__ == '__main__':
+    from src.unet import UNet
+    from data.datasets import AirbusTrainingset
+
+    data_dir = Path('data/processed')
+    training_set = AirbusTrainingset(data_dir / 'train_ship_segmentations.csv', data_dir / 'train')
+    train_loader = DataLoader(training_set, batch_size=4, shuffle=False)
+
+    model = UNet(n_channels=3, n_classes=1)
+
+    for images, true_masks in train_loader: break
+    masks_pred = model(images)
+    
+    ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
+    image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
+
+    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).type(torch.uint8).numpy()
+    ground_truth = torch.squeeze(true_masks[image_ix]).numpy()
+
+    image = wandb.Image(
+        to_pil_image(images[image_ix]), 
+        masks={
+            'prediction': {'mask_data': predicted_mask, 'class_labels': class_labels},
+            'ground_truth': {'mask_data': ground_truth, 'class_labels': class_labels}
+        },
+    )
+
+
