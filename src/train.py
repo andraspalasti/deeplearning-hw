@@ -11,8 +11,6 @@ from tqdm import tqdm
 from src.evaluate import evaluate
 
 
-dir_checkpoint = Path('./checkpoints/')
-
 class_labels = {0: 'background', 1: 'ship'}
 
 def train_model(
@@ -22,6 +20,7 @@ def train_model(
     val_loader: DataLoader,
     learning_rate: float,
     epochs: int = 5,
+    checkpoint_dir = Path('checkpoint'),
 ):
     # (Initialize logging)
     experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
@@ -108,9 +107,9 @@ def train_model(
                     })
 
         # Save checkpoint
-        Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
+        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
         state_dict = model.state_dict()
-        torch.save(state_dict, str(dir_checkpoint / f'checkpoint_epoch{epoch}.pth'))
+        torch.save(state_dict, str(checkpoint_dir / f'checkpoint_epoch{epoch}.pth'))
         print(f'Checkpoint {epoch} saved!')
 
 
