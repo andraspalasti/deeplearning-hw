@@ -16,9 +16,13 @@ IMAGE_SIZE = 256
 class AirbusDataset(Dataset):
     """Divides all images into 3x3 squares and loops through them."""
 
-    def __init__(self, segmentations_file, imgs_dir):
+    def __init__(self, segmentations_file, imgs_dir, should_contain_ship=False):
         ship_segmentations = pd.read_csv(segmentations_file)
         ship_segmentations['EncodedPixels'] = ship_segmentations['EncodedPixels'].fillna('')
+
+        # Only use images that do contain a ship
+        if should_contain_ship:
+            ship_segmentations = ship_segmentations[ship_segmentations['EncodedPixels'] != '']
 
         self.seg_by_img = ship_segmentations.groupby(['ImageId']).agg({'EncodedPixels': ' '.join})
         self.imgs_dir = Path(imgs_dir)
@@ -118,12 +122,16 @@ def bbox(mask: np.ndarray):
 
 if __name__ == '__main__':
     proc_dir = Path('data/processed')
-    train_set = AirbusDataset(proc_dir / 'train_ship_segmentations.csv', proc_dir / 'train')
+    train_set = AirbusDataset(
+        proc_dir / 'val_ship_segmentations.csv', 
+        proc_dir / 'val',
+        should_contain_ship=True
+    )
 
     import matplotlib.pyplot as plt
     n = 3
     for i in range(n):
-        crop, mask = train_set[7+i]
+        crop, mask = train_set[3+i]
         plt.subplot(n, 2, i*2+1)
         plt.imshow(crop.permute((1, 2, 0)))
         plt.subplot(n, 2, i*2+2)
