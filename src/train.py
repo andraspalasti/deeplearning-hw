@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.evaluate import evaluate
+from src.dice_score import dice_loss
 
 
 class_labels = {0: 'background', 1: 'ship'}
@@ -20,8 +21,11 @@ def train_model(
     val_loader: DataLoader,
     learning_rate: float,
     epochs: int = 5,
+    amp: bool = False,
     checkpoint_dir = Path('checkpoint'),
 ):
+    assert model.n_classes == 1, 'Can binary classification model with this function'
+
     # (Initialize logging)
     experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
     experiment.config.update({
@@ -40,8 +44,10 @@ def train_model(
     ''')
 
     # Set up optimizer, the loss
+    grad_clipping = 1.0
     optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, foreach=True)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5)  # goal: maximize Dice score
+    grad_scaler = torch.cuda.amp.GradScaler(enabled=amp) # Needed because of autocasting
     criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss()
 
     global_step = 0
@@ -60,15 +66,24 @@ def train_model(
                 images = images.to(device=device, dtype=torch.float32)
                 true_masks = true_masks.to(device=device, dtype=torch.float32)
 
-                masks_pred = model(images)
+                # Clear gradients left by previous batch
+                optimizer.zero_grad(set_to_none=True) # For reduced memory footprint
 
-                # TODO: Only works on single class
-                loss = criterion(masks_pred, true_masks)
+                with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
+                    masks_pred = model(images)
+                    loss = criterion(masks_pred, true_masks)
+                    loss += dice_loss(
+                        nn.functional.sigmoid(masks_pred).float(),
+                        true_masks.float(),
+                        multiclass=False
+                    )
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                grad_scaler.scale(loss).backward() # Populate gradients
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clipping)
+                grad_scaler.step(optimizer) # Do optimization step
+                grad_scaler.update()
 
+                # Update statistics
                 pbar.update(train_loader.batch_size)
                 global_step += 1
                 epoch_loss += loss.item()
@@ -87,8 +102,6 @@ def train_model(
                     # Search for an image containing a ship in batch
                     ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
                     image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
-
-                    # TODO: Only works for n_classes = 1
                     predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).cpu().numpy()
                     ground_truth = torch.squeeze(true_masks[image_ix]).cpu().numpy()
 

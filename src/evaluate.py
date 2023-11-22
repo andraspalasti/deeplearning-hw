@@ -12,14 +12,14 @@ def evaluate(net, dataloader: DataLoader, device: torch.device):
     dice_score = 0
 
     # iterate over the validation set
-    for batch in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', leave=False):
+    for batch in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', position=0, leave=False):
         images, true_masks = batch
 
         # move images and labels to correct device and type
         images = images.to(device=device, dtype=torch.float32)
         true_masks = true_masks.to(device=device, dtype=torch.float32)
 
-        # predict the mask
+        # predict the mask (shape: B x C x H x W)
         mask_preds = net(images)
 
         if net.n_classes == 1:
