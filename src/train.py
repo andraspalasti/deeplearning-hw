@@ -44,8 +44,10 @@ def train_model(
         Device:          {device.type}
         Mixed Precision: {amp}
     ''')
+    # Create folder for checkpoints
+    if not isinstance(checkpoint_dir, Path): checkpoint_dir = Path(checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    # Set up optimizer, the loss
     grad_clipping = 1.0
     optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, foreach=True)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5)  # goal: maximize Dice score
@@ -122,10 +124,16 @@ def train_model(
                     })
 
         # Save checkpoint
-        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-        state_dict = model.state_dict()
-        torch.save(state_dict, str(checkpoint_dir / f'checkpoint_epoch{epoch}.pth'))
+        save_model(model, epoch, i, learning_rate, checkpoint_dir)
         print(f'Checkpoint {epoch} saved!')
+
+
+def save_model(model: nn.Module, epoch: int, lr: float, dir):
+    dir = Path(dir)
+    state_dict = model.state_dict()
+    state_dict['epoch'] = epoch
+    state_dict['learning_rate'] = lr
+    torch.save(state_dict, str(dir / f'checkpoint_epoch{epoch}.pth'))
 
 
 if __name__ == '__main__':
@@ -140,20 +148,30 @@ if __name__ == '__main__':
         should_contain_ship=True
     )
 
-    train_loader = DataLoader(training_set, batch_size=1, shuffle=True, pin_memory=True)
-    val_loader = DataLoader(validation_set, batch_size=1, shuffle=False, pin_memory=True)
+    g = torch.Generator().manual_seed(42)
+    train_loader = DataLoader(training_set, batch_size=1, shuffle=True, pin_memory=True, generator=g)
+    val_loader = DataLoader(validation_set, batch_size=1, shuffle=False, pin_memory=True, generator=g)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'Using device {device}')
 
     model = UNet(n_channels=3, n_classes=1)
+    print(f'Network:\n'
+        f'\t{model.n_channels} input channels\n'
+        f'\t{model.n_classes} output channels (classes)\n'
+        f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
+
     model.to(device)
-
-    train_model(
-        model,
-        device,
-        train_loader,
-        val_loader,
-        learning_rate=0.0001,
-    )
-
-
+    try:
+        train_model(
+            model,
+            device,
+            train_loader,
+            val_loader,
+            learning_rate=0.0001,
+            epochs=5,
+            amp=False
+        )
+    except torch.cuda.OutOfMemoryError:
+        torch.cuda.empty_cache()
+        print('Detected OutOfMemoryError!')
