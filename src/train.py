@@ -32,6 +32,7 @@ def train_model(
         'epochs': epochs,
         'batch_size': train_loader.batch_size,
         'learning_rate': learning_rate,
+        'amp': amp,
     })
 
     print(f'''Starting training:
@@ -41,6 +42,7 @@ def train_model(
         Training size:   {len(train_loader.dataset)}
         Validation size: {len(val_loader.dataset)}
         Device:          {device.type}
+        Mixed Precision: {amp}
     ''')
 
     # Set up optimizer, the loss
@@ -73,8 +75,8 @@ def train_model(
                     masks_pred = model(images)
                     loss = criterion(masks_pred, true_masks)
                     loss += dice_loss(
-                        nn.functional.sigmoid(masks_pred).float(),
-                        true_masks.float(),
+                        nn.functional.sigmoid(masks_pred).squeeze(dim=1).float(),
+                        torch.squeeze(true_masks, dim=1).float(),
                         multiclass=False
                     )
 
@@ -128,29 +130,30 @@ def train_model(
 
 if __name__ == '__main__':
     from src.unet import UNet
-    from data.datasets import AirbusTrainingset
+    from data.datasets import AirbusTrainingset, AirbusDataset
 
     data_dir = Path('data/processed')
     training_set = AirbusTrainingset(data_dir / 'train_ship_segmentations.csv', data_dir / 'train')
-    train_loader = DataLoader(training_set, batch_size=4, shuffle=False)
+    validation_set = AirbusDataset(
+        data_dir / 'val_ship_segmentations.csv',
+        data_dir / 'val',
+        should_contain_ship=True
+    )
+
+    train_loader = DataLoader(training_set, batch_size=1, shuffle=True, pin_memory=True)
+    val_loader = DataLoader(validation_set, batch_size=1, shuffle=False, pin_memory=True)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = UNet(n_channels=3, n_classes=1)
+    model.to(device)
 
-    for images, true_masks in train_loader: break
-    masks_pred = model(images)
-    
-    ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
-    image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
-
-    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).type(torch.uint8).numpy()
-    ground_truth = torch.squeeze(true_masks[image_ix]).numpy()
-
-    image = wandb.Image(
-        to_pil_image(images[image_ix]), 
-        masks={
-            'prediction': {'mask_data': predicted_mask, 'class_labels': class_labels},
-            'ground_truth': {'mask_data': ground_truth, 'class_labels': class_labels}
-        },
+    train_model(
+        model,
+        device,
+        train_loader,
+        val_loader,
+        learning_rate=0.0001,
     )
 
 
