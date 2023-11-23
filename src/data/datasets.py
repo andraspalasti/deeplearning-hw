@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 
 
-# The size of the input image
+# The size of the input image to the network
 IMAGE_SIZE = 256
 
 
@@ -17,25 +17,49 @@ class AirbusDataset(Dataset):
     """Divides all images into 3x3 squares and loops through them."""
 
     def __init__(self, segmentations_file, imgs_dir, should_contain_ship=False):
-        ship_segmentations = pd.read_csv(segmentations_file)
-        ship_segmentations['EncodedPixels'] = ship_segmentations['EncodedPixels'].fillna('')
+        segmentations = pd.read_csv(segmentations_file)
+        segmentations['EncodedPixels'] = segmentations['EncodedPixels'].fillna('')
+        segmentations = segmentations[segmentations['EncodedPixels'] != '']
 
-        # Only use images that do contain a ship
-        if should_contain_ship:
-            ship_segmentations = ship_segmentations[ship_segmentations['EncodedPixels'] != '']
-
-        self.seg_by_img = ship_segmentations.groupby(['ImageId']).agg({'EncodedPixels': ' '.join})
+        self.should_contain_ship = should_contain_ship
         self.imgs_dir = Path(imgs_dir)
+        if should_contain_ship:
+            # Only use images that do contain a ship
+            segmentations['ship_position'] = segmentations['EncodedPixels'].apply(self.ship_position)
+            self.seg_by_img = segmentations.groupby('ImageId').aggregate({
+                'EncodedPixels': ' '.join,
+                'ship_position': lambda x: np.unique(np.concatenate(x.values))
+            })
+
+            # Create idx mapping to each image
+            self.idx_to_dfi = []
+            for i, positions in enumerate(self.seg_by_img['ship_position'].values):
+                self.idx_to_dfi.extend([(i, p) for p in positions])
+            self.num_images = len(self.idx_to_dfi)
+        else:
+            self.seg_by_img = segmentations.groupby(['ImageId']).agg({'EncodedPixels': ' '.join})
+            self.num_images = len(self.seg_by_img)*3*3
+
+    def ship_position(self, rle: str) -> list[int]:
+        mask = decode_rle(rle, (768, 768))
+        parts = mask.reshape(3, 256, 3, 256)
+        return np.nonzero(parts.any(axis=(1, 3)).flatten())[0]
 
     def __len__(self):
-        return len(self.seg_by_img)*3*3
+        return self.num_images
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
-        img_id = self.seg_by_img.index.values[index // 9]
-        rle = self.seg_by_img.iloc[index // 9, 0]
+        if self.should_contain_ship:
+            dfi, pos = self.idx_to_dfi[index]
+            img_id = self.seg_by_img.index.values[dfi]
+            rle = self.seg_by_img.iloc[dfi, 0]
+            ix, iy = pos % 3, pos // 3
+        else:
+            img_id = self.seg_by_img.index.values[index // 9]
+            rle = self.seg_by_img.iloc[index // 9, 0]
+            ix, iy = (index % 9) % 3, (index % 9) // 3
 
         # Which square of the image do we want to return
-        ix, iy = (index % 9) % 3, (index % 9) // 3
         starty, endy, startx, endx = IMAGE_SIZE*iy, IMAGE_SIZE*(iy+1), IMAGE_SIZE*ix, IMAGE_SIZE*(ix+1)
 
         img = Image.open(self.imgs_dir / img_id)
@@ -67,14 +91,15 @@ class AirbusTrainingset(Dataset):
         if rle == '':
             # Create a random crop from the image
             starty, startx = torch.randint(low=0, high=img.width-IMAGE_SIZE, size=(2,)).tolist()
-
             crop = img.crop((startx, starty, startx+IMAGE_SIZE, starty+IMAGE_SIZE))
             mask = torch.zeros((1, IMAGE_SIZE, IMAGE_SIZE)) 
         else:
             # Create a crop around the ship
             ship_mask = decode_rle(rle, (img.width, img.height))
-            ymin, ymax, xmin, xmax = bbox(ship_mask)
+            ymin, ymax, xmin, xmax = bbox(ship_mask) # Bounding box of the ship
             bheight, bwidth = ymax-ymin, xmax-xmin
+
+            # Add padding to values
             if bheight < 256:
                 ymin = max(0, ymin - (256 - bheight)//2)
                 ymax = min(img.height, ymax + (256 - bheight)//2)
@@ -89,7 +114,6 @@ class AirbusTrainingset(Dataset):
             mask = transforms.F.to_tensor(mask)
 
         return transforms.F.to_tensor(crop), mask
-            
 
 
 def decode_rle(rle: str, img_size: tuple[int,int]) -> np.ndarray:
@@ -122,16 +146,17 @@ def bbox(mask: np.ndarray):
 
 if __name__ == '__main__':
     proc_dir = Path('data/processed')
-    train_set = AirbusDataset(
+    val_set = AirbusDataset(
         proc_dir / 'val_ship_segmentations.csv', 
         proc_dir / 'val',
         should_contain_ship=True
     )
+    print(f'Length of dataset: {len(val_set)}')
 
     import matplotlib.pyplot as plt
     n = 3
     for i in range(n):
-        crop, mask = train_set[3+i]
+        crop, mask = val_set[3+i]
         plt.subplot(n, 2, i*2+1)
         plt.imshow(crop.permute((1, 2, 0)))
         plt.subplot(n, 2, i*2+2)
