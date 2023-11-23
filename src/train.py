@@ -151,6 +151,8 @@ def get_args():
 
 
 def main():
+    import os
+
     from src.unet import UNet
     from data.datasets import AirbusTrainingset, AirbusDataset
 
@@ -165,10 +167,15 @@ def main():
         should_contain_ship=True
     )
 
-    g = torch.Generator().manual_seed(42) # So we have the same shuffling through each training
-    train_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True, pin_memory=True, generator=g)
-    val_loader = DataLoader(validation_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+    loader_args = dict(
+        batch_size=args.batch_size,
+        num_workers=os.cpu_count(),
+        pin_memory=True, 
+        generator=torch.Generator().manual_seed(42) # So we have the same shuffling through each training
+    )
+    train_loader = DataLoader(training_set, shuffle=True, **loader_args)
+    val_loader = DataLoader(validation_set, shuffle=False, **loader_args)
+    test_loader = DataLoader(test_set, shuffle=False, **loader_args)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Using device {device}')
