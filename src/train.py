@@ -44,13 +44,10 @@ def train_model(
         Device:          {device.type}
         Mixed Precision: {amp}
     ''')
-    # Create folder for checkpoints
-    if not isinstance(checkpoint_dir, Path): checkpoint_dir = Path(checkpoint_dir)
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     grad_clipping = 1.0
     optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, foreach=True)
-    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5)  # goal: maximize Dice score
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5) # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp) # Needed because of autocasting
     criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss()
 
@@ -99,9 +96,12 @@ def train_model(
                 pbar.set_postfix(**{'loss (batch)': loss.item()})
 
                 # Log statistics
-                if (i+1) % (len(train_loader) // 5) == 0:
+                if (i+1) % (len(train_loader) // 10) == 0:
                     val_score = evaluate(model, val_loader, device)
                     print(f'Validation Dice score: {val_score}')
+
+                    # Reduce lr when validation does not get better
+                    scheduler.step(val_score)
 
                     # Search for an image containing a ship in batch
                     ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
@@ -124,54 +124,88 @@ def train_model(
                     })
 
         # Save checkpoint
-        save_model(model, epoch, i, learning_rate, checkpoint_dir)
+        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        save_model(model, epoch, learning_rate, checkpoint_dir)
         print(f'Checkpoint {epoch} saved!')
 
 
 def save_model(model: nn.Module, epoch: int, lr: float, dir):
     dir = Path(dir)
     state_dict = model.state_dict()
-    state_dict['epoch'] = epoch
     state_dict['learning_rate'] = lr
     torch.save(state_dict, str(dir / f'checkpoint_epoch{epoch}.pth'))
 
+def get_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
+    parser.add_argument('--epochs', '-e', metavar='E', type=int, default=5, help='Number of epochs')
+    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=1, help='Batch size')
+    parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=0.001,
+                        help='Learning rate', dest='lr')
+    parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
+    parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
+    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
+    parser.add_argument('--eval', action='store_true', default=False, help='Only evaluate the model')
+    return parser.parse_args()
 
-if __name__ == '__main__':
+
+def main():
     from src.unet import UNet
     from data.datasets import AirbusTrainingset, AirbusDataset
 
+    args = get_args()
+
     data_dir = Path('data/processed')
     training_set = AirbusTrainingset(data_dir / 'train_ship_segmentations.csv', data_dir / 'train')
+    test_set = AirbusDataset(data_dir / 'val_ship_segmentations.csv', data_dir / 'val')
     validation_set = AirbusDataset(
         data_dir / 'val_ship_segmentations.csv',
         data_dir / 'val',
         should_contain_ship=True
     )
 
-    g = torch.Generator().manual_seed(42)
-    train_loader = DataLoader(training_set, batch_size=1, shuffle=True, pin_memory=True, generator=g)
-    val_loader = DataLoader(validation_set, batch_size=1, shuffle=False, pin_memory=True, generator=g)
+    g = torch.Generator().manual_seed(42) # So we have the same shuffling through each training
+    train_loader = DataLoader(training_set, batch_size=args.batch_size, shuffle=True, pin_memory=True, generator=g)
+    val_loader = DataLoader(validation_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, pin_memory=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Using device {device}')
 
-    model = UNet(n_channels=3, n_classes=1)
+    model = UNet(n_channels=3, n_classes=1, bilinear=args.bilinear)
+    model.to(device)
     print(f'Network:\n'
         f'\t{model.n_channels} input channels\n'
         f'\t{model.n_classes} output channels (classes)\n'
         f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
 
-    model.to(device)
+    learning_rate = args.lr
+    if args.load:
+        state_dict = torch.load(args.load, map_location=device)
+        if 'learning_rate' in state_dict:
+            learning_rate = state_dict['learning_rate']
+            del state_dict['learning_rate']
+        model.load_state_dict(state_dict)
+        print(f'Successfully loaded model from {args.load}')
+
+    if args.eval:
+        dice_score = evaluate(model, test_loader, device)
+        print(f'Validation Dice: {dice_score}')
+        return
+
     try:
         train_model(
             model,
             device,
             train_loader,
             val_loader,
-            learning_rate=0.0001,
-            epochs=5,
-            amp=False
+            learning_rate=learning_rate,
+            epochs=args.epochs,
+            amp=args.amp
         )
     except torch.cuda.OutOfMemoryError:
         torch.cuda.empty_cache()
         print('Detected OutOfMemoryError!')
+
+if __name__ == '__main__':
+    main()
