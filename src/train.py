@@ -22,7 +22,7 @@ def train_model(
     learning_rate: float,
     epochs: int = 5,
     amp: bool = False,
-    checkpoint_dir = Path('checkpoint'),
+    checkpoint_dir = Path('checkpoints'),
 ):
     assert model.n_classes == 1, 'Can binary classification model with this function'
 
@@ -70,6 +70,7 @@ def train_model(
                 # Clear gradients left by previous batch
                 optimizer.zero_grad(set_to_none=True) # For reduced memory footprint
 
+                # Forward pass
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
                     loss = criterion(masks_pred, true_masks)
@@ -110,7 +111,7 @@ def train_model(
                     ground_truth = torch.squeeze(true_masks[image_ix]).cpu().numpy()
 
                     experiment.log({
-                        'learning rate': learning_rate,
+                        'learning rate': optimizer.param_groups[0]['lr'],
                         'validation Dice': val_score,
                         'image': wandb.Image(
                             to_pil_image(images[image_ix]), 
@@ -125,7 +126,7 @@ def train_model(
 
         # Save checkpoint
         Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-        save_model(model, epoch, learning_rate, checkpoint_dir)
+        save_model(model, epoch, optimizer.param_groups[0]['lr'], checkpoint_dir)
         print(f'Checkpoint {epoch} saved!')
 
 
