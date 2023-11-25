@@ -3,6 +3,7 @@ from pathlib import Path
 import wandb
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.transforms.functional import to_pil_image
 from torch import optim
 from torch.utils.data import DataLoader
@@ -49,7 +50,7 @@ def train_model(
     optimizer = optim.RMSprop(model.parameters(), lr=learning_rate, foreach=True)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5) # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp) # Needed because of autocasting
-    criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss()
 
     global_step = 0
     for epoch in range(1, epochs + 1):
@@ -72,10 +73,13 @@ def train_model(
 
                 # Forward pass
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-                    masks_pred = model(images)
-                    loss = criterion(masks_pred, true_masks)
+                    masks_pred_logits = model(images)
+                    loss = criterion(masks_pred_logits, true_masks)
+
+                    # Predictions with probabilities
+                    masks_pred = F.sigmoid(masks_pred_logits).squeeze(dim=1)
                     loss += dice_loss(
-                        nn.functional.sigmoid(masks_pred).squeeze(dim=1).float(),
+                        masks_pred.float(),
                         torch.squeeze(true_masks, dim=1).float(),
                         multiclass=False
                     )
@@ -107,8 +111,8 @@ def train_model(
                     # Search for an image containing a ship in batch
                     ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
                     image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
-                    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).cpu()
-                    ground_truth = torch.squeeze(true_masks[image_ix]).cpu()
+                    predicted_mask = (masks_pred[image_ix] > 0.5).cpu()
+                    ground_truth = torch.squeeze(true_masks[image_ix], dim=0).cpu()
 
                     experiment.log({
                         'learning rate': optimizer.param_groups[0]['lr'],
@@ -121,8 +125,8 @@ def train_model(
                             },
                         ),
                         'masks': {
-                            'pred': wandb.Image(predicted_mask),
-                            'true': wandb.Image(ground_truth),
+                            'pred': wandb.Image(predicted_mask.float()),
+                            'true': wandb.Image(ground_truth.float()),
                         },
                         'step': global_step,
                         'epoch': epoch,
