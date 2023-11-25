@@ -107,8 +107,8 @@ def train_model(
                     # Search for an image containing a ship in batch
                     ixs = torch.nonzero(true_masks)[:, 0] # Indexes of images that contain ships
                     image_ix = ixs[0].item() if ixs.size(0) > 0 else 0
-                    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).cpu().numpy()
-                    ground_truth = torch.squeeze(true_masks[image_ix]).cpu().numpy()
+                    predicted_mask = (torch.squeeze(masks_pred[image_ix]) >= 0.5).cpu()
+                    ground_truth = torch.squeeze(true_masks[image_ix]).cpu()
 
                     experiment.log({
                         'learning rate': optimizer.param_groups[0]['lr'],
@@ -116,10 +116,14 @@ def train_model(
                         'image': wandb.Image(
                             to_pil_image(images[image_ix]), 
                             masks={
-                                'prediction': {'mask_data': predicted_mask, 'class_labels': class_labels},
-                                'ground_truth': {'mask_data': ground_truth, 'class_labels': class_labels}
+                                'prediction': {'mask_data': predicted_mask.numpy(), 'class_labels': class_labels},
+                                'ground_truth': {'mask_data': ground_truth.numpy(), 'class_labels': class_labels}
                             },
                         ),
+                        'masks': {
+                            'pred': wandb.Image(predicted_mask),
+                            'true': wandb.Image(ground_truth),
+                        },
                         'step': global_step,
                         'epoch': epoch,
                     })
