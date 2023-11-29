@@ -1,13 +1,12 @@
 from pathlib import Path
 
-import torch
-from torch import Tensor
 import numpy as np
 import pandas as pd
+import torch
 from PIL import Image
+from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.transforms import transforms
-
 
 # The size of the input image to the network
 IMAGE_SIZE = 256

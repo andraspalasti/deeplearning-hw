@@ -1,9 +1,12 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.dice_score import multiclass_dice_coeff, dice_coeff
+from src.dice_score import dice_coeff, multiclass_dice_coeff
+
 
 @torch.inference_mode()
 def evaluate(net, dataloader: DataLoader, device: torch.device):
@@ -36,6 +39,58 @@ def evaluate(net, dataloader: DataLoader, device: torch.device):
 
     net.train()
     return dice_score / max(num_val_batches, 1)
+
+
+@torch.inference_mode()
+def predict(net, inputs: torch.Tensor) -> torch.Tensor:
+    if len(inputs.shape) == 3:
+        inputs = inputs.unsqueeze(dim=0)
+    net.eval()
+    out = net(inputs)
+    mask_preds = (F.sigmoid(out) > 0.5)
+    return mask_preds
+
+
+def predict_image(net, img_path, out_path):
+    size = 256 # The size of the input images to the network
+    img = Image.open(img_path)
+    if img.width < size:
+        ratio = size / img.width
+        img = img.resize((size, int(ratio * img.height)))
+    if img.height < size:
+        ratio = size / img.height
+        img = img.resize((int(ratio * img.width), size))
+
+    w, h = img.width, img.height
+    img = np.array(img)
+
+    # Split image into regions
+    xs = [x for x in range(0, w-size, size)] + [w - size]
+    ys = [y for y in range(0, h-size, size)] + [h - size]
+    crops = [torch.from_numpy(img[y:y+size, x:x+size]) for y in ys for x in xs]
+
+    # Create inputs for network
+    inputs = torch.cat([torch.unsqueeze(crop, dim=0) for crop in crops], dim=0)
+    inputs = inputs.permute((0, 3, 1, 2)).type(torch.float)
+    inputs /= 255
+
+    mask_preds = predict(net, inputs)
+
+    # Create mask for whole image
+    mask = np.empty((h, w), dtype=np.bool_)
+    for i, crop_mask in enumerate(mask_preds):
+        y, x = ys[i//len(xs)], xs[i%len(xs)]
+        mask[y:y+size, x:x+size] = crop_mask.numpy()
+
+    # Merge the mask and the original image
+    merged = np.ones((h, w, 4))*255
+    merged[:,:,:-1] = img
+    merged[mask, :-1] = merged[mask, :-1]*0.6 + np.array([255, 0, 0])*0.4
+    merged = merged.astype(np.uint8)
+
+    out_img = Image.fromarray(merged)
+    out_img.save(out_path)
+    return mask
 
 
 if __name__ == '__main__':

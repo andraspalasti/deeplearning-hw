@@ -1,17 +1,17 @@
 from pathlib import Path
 
-import wandb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.transforms.functional import to_pil_image
+from PIL import Image
 from torch import optim
 from torch.utils.data import DataLoader
+from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 
-from src.evaluate import evaluate
+import wandb
 from src.dice_score import dice_loss
-
+from src.evaluate import evaluate, predict_image
 
 class_labels = {0: 'background', 1: 'ship'}
 
@@ -152,6 +152,7 @@ def get_args():
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=0.001,
                         help='Learning rate', dest='lr')
     parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
+    parser.add_argument('--predict', type=str, default=False, help='Load image and perform prediction on it (use with load flag to use trained model)')
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--eval', action='store_true', default=False, help='Only evaluate the model')
@@ -161,8 +162,8 @@ def get_args():
 def main():
     import os
 
+    from data.datasets import AirbusDataset, AirbusTrainingset
     from src.unet import UNet
-    from data.datasets import AirbusTrainingset, AirbusDataset
 
     args = get_args()
 
@@ -203,6 +204,15 @@ def main():
             del state_dict['learning_rate']
         model.load_state_dict(state_dict)
         print(f'Successfully loaded model from {args.load}')
+
+    if args.predict:
+        out_img, out_mask = Path('colored.png'), Path('mask.png')
+        print(f'Segmenting image: {args.predict}')
+        mask = predict_image(model, args.predict, out_img)
+        Image.fromarray(mask).save(out_mask)
+        print(f'Colored image saved to: {out_img}')
+        print(f'Predicted mask saved to: {out_mask}')
+        return
 
     if args.eval:
         dice_score = evaluate(model, test_loader, device)
