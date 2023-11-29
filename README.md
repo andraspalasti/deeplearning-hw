@@ -16,7 +16,7 @@ The exploration of our own dataset is in: notebooks/data_exploration.ipynb
 
 ## Milestone 2.
 
-* **How did we train the model?**
+### How did we train the model?
 
   First we used colab for training but our model wasn't nearly as fast that
   it could complete one reasonable training and not run out of colabs limit.
@@ -35,7 +35,7 @@ The exploration of our own dataset is in: notebooks/data_exploration.ipynb
       --amp
   ```
 
-* **How did we evaluate the model?**
+### How did we evaluate the model?
 
   Well we used *wandb* for logging and that's a really good for getting a rough
   sense of how the model performs, but also created a script for evaluation
@@ -51,3 +51,10 @@ Also our wandb runs are public, so everybody can see our model's training progre
 [our best run yet](https://wandb.ai/andraspalasti2/U-Net/runs/n9gl01x6). 
 This has been achieved in colab loading a previous run's weights and continuing
 training on it.
+
+**For predicting a single image, use the command below:**
+```
+$ PYTHONPATH=. python3 src/train.py \
+  --load <pth file of model weights> \
+  --predict <image to perform prediction on>
+```
