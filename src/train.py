@@ -25,7 +25,7 @@ def train_model(
     amp: bool = False,
     checkpoint_dir = Path('checkpoints'),
 ):
-    assert model.n_classes == 1, 'Can binary classification model with this function'
+    assert model.n_classes == 1, 'Can only train binary classification model with this function'
 
     # (Initialize logging)
     experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
