@@ -28,7 +28,7 @@ The exploration of our own dataset is in: notebooks/data_exploration.ipynb
 
   For training inside gcp we used the command below:
   ```
-  $ PYTHONPATH=. src/train.py \
+  $ PYTHONPATH=. python src/train.py \
       --epochs 5 \
       --batch-size 20 \
       --learning-rate 0.001 \
@@ -42,7 +42,7 @@ The exploration of our own dataset is in: notebooks/data_exploration.ipynb
   on test data.
 
   ```
-  $ PYTHONPATH=. src/train.py \
+  $ PYTHONPATH=. python src/train.py \
       --load <pth file of model weights> \
       --eval
   ```
@@ -54,7 +54,7 @@ training on it.
 
 **For predicting a single image, use the command below:**
 ```
-$ PYTHONPATH=. python3 src/train.py \
+$ PYTHONPATH=. python src/train.py \
   --load <pth file of model weights> \
   --predict <image to perform prediction on>
 ```
