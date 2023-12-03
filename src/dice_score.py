@@ -13,6 +13,8 @@ def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, 
     # input and target are one-hot encoded vectors
     inter = 2 * (input * target).sum(dim=sum_dim)
     sets_sum = input.sum(dim=sum_dim) + target.sum(dim=sum_dim)
+
+    # If both input and target is empty than it is an exact match 
     sets_sum = torch.where(sets_sum == 0, inter, sets_sum)
 
     dice = (inter + epsilon) / (sets_sum + epsilon)

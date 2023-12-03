@@ -14,8 +14,8 @@ def evaluate(net, dataloader: DataLoader, device: torch.device):
     num_val_batches = len(dataloader)
     dice_score = 0
 
-    # iterate over the validation set
-    for batch in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', position=0, leave=False):
+    # iterate over the specified set
+    for batch in tqdm(dataloader, total=num_val_batches, desc='Evaluation round', unit='batch', position=0, leave=False):
         images, true_masks = batch
 
         # move images and labels to correct device and type
