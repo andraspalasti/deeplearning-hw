@@ -16,7 +16,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Evaluate the UNet on test images and target masks')
     parser.add_argument('--load', '-f', type=str, required=True, help='Load model from a .pth file')
     parser.add_argument('--out', '-o', type=str, required=True, help='Where to save evaluation results')
-    parser.add_argument('--split', type=bool, default=False, help='Split images into 3x3 equal parts')
+    parser.add_argument('--split', action='store_true', default=False, help='Split images into 3x3 equal parts')
     return parser.parse_args()
 
 
