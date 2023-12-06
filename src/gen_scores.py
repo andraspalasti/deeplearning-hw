@@ -44,7 +44,7 @@ def main():
             segmentations_file=segmentations_file,
             should_contain_ship=False
         )
-        image_ids = [test_set.seg_by_img.index[i/9] for i in range(len(test_set))]
+        image_ids = [test_set.seg_by_img.index[i//9] for i in range(len(test_set))]
         parts = [i%9 for i in range(len(test_set))]
     else:
         test_set = AirbusRawDataset(
