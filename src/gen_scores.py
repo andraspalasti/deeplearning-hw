@@ -44,11 +44,15 @@ def main():
             segmentations_file=segmentations_file,
             should_contain_ship=False
         )
+        image_ids = test_set.seg_by_img.index.tolist()
+        parts = [0] * len(test_set)
     else:
         test_set = AirbusRawDataset(
             imgs_dir=imgs_dir,
             segmentations_file=segmentations_file,
         )
+        image_ids = [test_set.seg_by_img.index[i/9] for i in range(len(test_set))]
+        parts = [i%9 for i in range(len(test_set))]
 
     iou_scores, dice_scores = [], []
     with tqdm(desc='Evaluating', total=len(test_set)) as pbar:
@@ -76,8 +80,8 @@ def main():
             pbar.update()
 
     evaluation = pd.DataFrame({
-        'ImageId': test_set.seg_by_img.index.tolist(),
-        'part': [i%9 for i in range(len(test_set))] if args.split else [0] * len(test_set),
+        'ImageId': image_ids,
+        'part': parts,
         'iou': iou_scores,
         'dice': dice_scores,
     })
