@@ -12,6 +12,33 @@ from torchvision.transforms import transforms
 IMAGE_SIZE = 256
 
 
+class AirbusRawDataset(Dataset):
+    def __init__(self, segmentations_file, imgs_dir) -> None:
+        segmentations = pd.read_csv(segmentations_file)
+        segmentations['EncodedPixels'] = segmentations['EncodedPixels'].fillna('')
+        segmentations = segmentations[segmentations['EncodedPixels'] != '']
+
+        self.imgs_dir = Path(imgs_dir)
+        self.seg_by_img = segmentations.groupby('ImageId').aggregate({
+            'EncodedPixels': ' '.join,
+        })
+
+    def __len__(self):
+        return len(self.seg_by_img)
+
+    def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
+        image_id = self.seg_by_img.index.values[index]
+        rle = self.seg_by_img.loc[image_id, 'EncodedPixels']
+
+        img = Image.open(self.imgs_dir / image_id)
+
+        input = transforms.F.to_tensor(img)
+        mask = decode_rle(rle, (img.width, img.height))
+        mask = torch.from_numpy(mask)
+
+        return input, mask.unsqueeze(dim=0)
+
+
 class AirbusDataset(Dataset):
     """Divides all images into 3x3 squares and loops through them."""
 
