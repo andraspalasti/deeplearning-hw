@@ -48,7 +48,7 @@ The exploration of our own dataset is in: notebooks/data_exploration.ipynb
   ```
 
 Also our wandb runs are public, so everybody can see our model's training progress,
-[our best run yet](https://wandb.ai/andraspalasti2/U-Net/runs/n9gl01x6). 
+[our best run yet](https://wandb.ai/andraspalasti2/U-Net/runs/uyxwp30x). 
 This has been achieved in colab loading a previous run's weights and continuing
 training on it.
 
@@ -58,3 +58,7 @@ $ PYTHONPATH=. python src/train.py \
   --load <pth file of model weights> \
   --predict <image to perform prediction on>
 ```
+
+### Our article of the whole process: [article](https://github.com/andraspalasti/deeplearning-hw/raw/main/report.pdf)
+Weights of the trained models can be found in: 
+https://drive.google.com/drive/folders/1pyKEO6eHIgv-YukRxBChiyY3TO8eFsKz?usp=sharing
