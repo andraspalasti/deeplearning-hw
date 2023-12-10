@@ -135,7 +135,7 @@ segmentation, providing insights and methodologies that address different challe
 \section{Architecture}
 
 
-\begin{figure}
+\begin{figure}[!h]
   \centering
   \includegraphics[width=0.8\textwidth]{u-net-architecture}
   \caption{
@@ -173,7 +173,7 @@ Our dataset is publicly available at the following URL: \url{https://drive.googl
 \subsection{Training}
 
 
-\begin{figure}
+\begin{figure}[!ht]
   \centering
   \includegraphics[width=\textwidth]{comparison}
   \caption{
@@ -183,11 +183,12 @@ Our dataset is publicly available at the following URL: \url{https://drive.googl
     images, while the right side displays predictions from a network trained
     on cropped images.
   }
+  \label{fig:comparison}
 \end{figure}
 
 For our initial solution, we employed the UNet model as described without engaging in intricate procedures.
 The model was trained using provided training images and corresponding segmentation masks, with input
-images sized \(768 \times 768\). The outcomes of this model are illustrated in Figure 2.
+images sized \(768 \times 768\). The outcomes of this model are illustrated in Figure \ref{fig:comparison}.
 
 Our conjecture regarding the model's performance is that, when trained on full-sized images, it struggles
 to discern crucial features due to the expansive context.
@@ -250,11 +251,11 @@ with images containing ships, and carefully adjusting the segmentation masks acc
     Some of the images where our model fails to achive,
     respectable results.
   }
-  \label{fig:bad-segmentations}
+  \label{fig:badsegmentations}
 \end{figure}
 
 While our current model demonstrates promising results, there are areas where improvements could significantly enhance its
-performance. A careful examination of the worst segmentations, as depicted in Figure \ref{fig:bad-segmentations}, reveals
+performance. A careful examination of the worst segmentations, as depicted in Figure \ref{fig:badsegmentations}, reveals
 challenges in scenarios where land is present. Additionally, the model tends to struggle in distinguishing between
 harbors and ships.
 
